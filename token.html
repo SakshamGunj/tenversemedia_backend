@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Firebase Login for Token</title>
+    <!-- Firebase App SDK (compat mode) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <!-- Firebase Auth SDK (compat mode) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+    <h1>Login to Get Firebase Token</h1>
+    <p>Email: <input type="email" id="email" placeholder="Enter email"></p>
+    <p>Password: <input type="password" id="password" placeholder="Enter password"></p>
+    <button onclick="login()">Login</button>
+    <p id="token"></p>
+
+    <script>
+        // Your Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyALZiqfQXlCGqRCI_NN3127oZhIkFd6unk",
+            authDomain: "spinthewheel-e14a6.firebaseapp.com",
+            projectId: "spinthewheel-e14a6",
+            storageBucket: "spinthewheel-e14a6.appspot.com",
+            messagingSenderId: "186691676465",
+            appId: "1:186691676465:web:a67ad5afc60424d586e810",
+            measurementId: "G-SC1JQLBXHY"
+        };
+
+        document.addEventListener("DOMContentLoaded", function () {
+            // Initialize Firebase
+            const app = firebase.initializeApp(firebaseConfig);
+            const auth = firebase.auth();
+
+            // Login function
+            window.login = function () {
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+
+                auth.signInWithEmailAndPassword(email, password)
+                    .then((userCredential) => {
+                        const user = userCredential.user;
+                        user.getIdToken().then((idToken) => {
+                            document.getElementById('token').innerText = `Bearer Token: ${idToken}`;
+                            console.log("Bearer Token:", idToken);
+                        }).catch((error) => {
+                            document.getElementById('token').innerText = `Error getting token: ${error.message}`;
+                        });
+                    })
+                    .catch((error) => {
+                        document.getElementById('token').innerText = `Login Error: ${error.message}`;
+                    });
+            };
+        });
+    </script>
+</body>
+</html>
