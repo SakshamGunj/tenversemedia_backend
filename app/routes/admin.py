@@ -10,6 +10,7 @@ from google.cloud.firestore_v1 import ArrayUnion
 from datetime import datetime
 import os
 import json
+import uuid
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -105,88 +106,69 @@ async def admin_dashboard(
         "total": total
     })
 
-@router.post(
-    "/api/register-restaurant",
-    tags=["Admin"],
-    summary="Register a new restaurant",
-    description="Registers a new restaurant with name, 6 offers, and initial loyalty settings.",
-    responses={
-        200: {"description": "Restaurant registered"},
-        400: {"description": "Invalid input"},
-        401: {"description": "Invalid token"},
-        500: {"description": "Server error"}
-    }
-)
+@router.post("/api/register-restaurant")
 async def register_restaurant(
     restaurant_name: str = Form(...),
-    offer1: str = Form(...),
-    offer2: str = Form(...),
-    offer3: str = Form(...),
-    offer4: str = Form(...),
-    offer5: str = Form(...),
-    offer6: str = Form(...),
-    points_per_rupee: float = Form(1.0, ge=0.1),
-    reward_thresholds: str = Form("1000:20%,2000:30%"),  # Format: "points:reward,points:reward"
+    offer1: str = Form(default=""),
+    offer2: str = Form(default=""),
+    offer3: str = Form(default=""),
+    offer4: str = Form(default=""),
+    offer5: str = Form(default=""),
+    offer6: str = Form(default=""),
+    points_per_rupee: float = Form(default=1.0),
+    reward_thresholds: str = Form(default=""),
+    referrer_reward_type: str = Form(default="points"),  # New: "points", "coupon", or "item"
+    referrer_reward_value: str = Form(default="20"),    # New: e.g., "20" for points, "5% Off" for coupon
+    referred_reward_type: str = Form(default="points"), # New: "points", "coupon", or "item"
+    referred_reward_value: str = Form(default="10"),    # New: e.g., "10" for points, "5% Off" for coupon
     current_user: dict = Depends(get_current_user)
 ):
-    if not restaurant_name.strip():
-        logger.error("Invalid restaurant name")
-        raise HTTPException(status_code=400, detail="Restaurant name cannot be empty")
-    
-    restaurant_id = restaurant_name.lower().replace(" ", "_")
-    if restaurant_exists(restaurant_id):
-        logger.error(f"Restaurant {restaurant_id} already exists")
-        raise HTTPException(status_code=400, detail="Restaurant already exists")
+    user_id = current_user["uid"]
 
-    offers = [o.strip() for o in [offer1, offer2, offer3, offer4, offer5, offer6] if o and o.strip()]
-    if len(offers) < 6:
-        logger.error(f"Only {len(offers)} valid offers provided, 6 required")
-        raise HTTPException(status_code=400, detail="All 6 offers are required and must be non-empty")
+    if points_per_rupee < 0:
+        raise HTTPException(status_code=400, detail="Points per rupee must be non-negative")
 
-    # Parse reward thresholds and convert keys to strings
-    try:
-        thresholds = {}
-        for item in reward_thresholds.split(","):
-            points, reward = [s.strip() for s in item.split(":")]
-            if not points.isdigit() or not reward:
-                raise ValueError
-            thresholds[str(int(points))] = reward  # Convert points to string
-        if not thresholds or min([int(k) for k in thresholds.keys()]) < 0:
-            raise ValueError
-    except ValueError:
-        logger.error(f"Invalid reward thresholds format: {reward_thresholds}")
-        raise HTTPException(status_code=400, detail="Reward thresholds must be in format 'points:reward,points:reward'")
+    # Collect offers
+    offers = [offer for offer in [offer1, offer2, offer3, offer4, offer5, offer6] if offer]
+    if not offers:
+        raise HTTPException(status_code=400, detail="At least one offer is required")
 
-    try:
-        with db.transaction() as transaction:
-            restaurant_ref = db.collection("restaurants").document(restaurant_id)
-            initial_settings = {
+    # Parse reward thresholds
+    reward_thresholds_dict = {}
+    if reward_thresholds:
+        for pair in reward_thresholds.split(","):
+            points, reward = pair.split(":")
+            reward_thresholds_dict[points.strip()] = reward.strip()
+
+    # Validate referral reward types
+    valid_reward_types = ["points", "coupon", "item"]
+    if referrer_reward_type not in valid_reward_types or referred_reward_type not in valid_reward_types:
+        raise HTTPException(status_code=400, detail="Invalid reward type. Must be 'points', 'coupon', or 'item'")
+
+    # Convert reward values for points
+    referrer_value = int(referrer_reward_value) if referrer_reward_type == "points" else referrer_reward_value
+    referred_value = int(referred_reward_value) if referred_reward_type == "points" else referred_reward_value
+
+    # Generate restaurant ID
+    restaurant_id = f"rest_{str(uuid.uuid4())[:8]}"
+
+    # Save restaurant data
+    restaurant_data = {
+        "restaurant_name": restaurant_name,
+        "offers": offers,
+        "loyalty_settings": {
+            "current": {
                 "points_per_rupee": points_per_rupee,
-                "reward_thresholds": thresholds
+                "reward_thresholds": reward_thresholds_dict
             }
-            history_entry = {
-                "points_per_rupee": points_per_rupee,
-                "reward_thresholds": thresholds,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            # Log the document data for debugging
-            document_data = {
-                "name": restaurant_name,
-                "offers": offers,
-                "loyalty_settings": {
-                    "current": initial_settings,
-                    "history": [history_entry]
-                }
-            }
-            logger.info(f"Attempting to save document for restaurant {restaurant_id}: {document_data}")
+        },
+        "referral_rewards": {
+            "referrer": {"type": referrer_reward_type, "value": referrer_value},
+            "referred": {"type": referred_reward_type, "value": referred_value}
+        },
+        "owner_id": user_id,
+        "created_at": datetime.utcnow().isoformat()
+    }
+    await db.collection("restaurants").document(restaurant_id).set(restaurant_data)
 
-            # Set the initial document
-            transaction.set(restaurant_ref, document_data)
-            # Ensure loyalty_settings/current is set separately
-            transaction.set(restaurant_ref.collection("loyalty_settings").document("current"), initial_settings)
-
-        logger.info(f"Registered restaurant {restaurant_id} with offers {offers}")
-        return {"message": f"Restaurant {restaurant_name} registered with ID {restaurant_id}"}
-    except Exception as e:
-        logger.error(f"Failed to register restaurant {restaurant_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to register restaurant")
+    return {"restaurant_id": restaurant_id}
