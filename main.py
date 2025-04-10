@@ -18,8 +18,8 @@ if __name__ == "__main__":
             return self.application
 
     options = {
-        "bind": "0.0.0.0:8080",
-        "workers": 1,
+        "bind": "0.0.0.0:8000",
+        "workers": 4,
         "worker_class": "uvicorn.workers.UvicornWorker",
     }
     StandaloneApplication(app, options).run()

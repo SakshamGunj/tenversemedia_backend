@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from firebase_admin import auth
+from fastapi import status
 from app.config import config
 import logging
 
@@ -21,3 +22,21 @@ async def get_current_user(authorization: str = Security(firebase_auth)) -> dict
     except Exception as e:
         logger.error(f"Token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+async def is_admin(current_user: dict = Depends(get_current_user)):
+    try:
+        # Check if the user has an admin custom claim
+        decoded_token = auth.verify_id_token(await oauth2_scheme())
+        if not decoded_token.get("custom_claims", {}).get("admin", False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required"
+            )
+        logger.info(f"Admin authenticated: {current_user['uid']}")
+        return current_user
+    except Exception as e:
+        logger.error(f"Admin check failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )

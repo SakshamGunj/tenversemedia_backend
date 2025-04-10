@@ -101,11 +101,15 @@ async def update_loyalty_settings(
 async def get_loyalty_balance(current_user: dict = Depends(get_current_user)):
     user_id = current_user["uid"]
     loyalty_data = get_loyalty_data(user_id)
+    logger.info(f"Loyalty data for {user_id}: {loyalty_data}")
+    
     return {
-        "total_points": loyalty_data["total_points"],
+        "total_points": loyalty_data.get("total_points", 0),  # Use .get() with default 0
+        "spin_points": loyalty_data.get("spin_points", 0),
+        "spend_points": loyalty_data.get("spend_points", 0),
+        "punches": loyalty_data.get("punches", 0),
         "tier": loyalty_data.get("tier", "Bronze"),
-        "punches": loyalty_data["punches"],
-        "restaurant_points": loyalty_data["restaurant_points"],
+        "restaurant_points": loyalty_data.get("restaurant_points", {}),
         "referral_code": loyalty_data.get("referral_code", f"REF{user_id[:8]}")
     }
 

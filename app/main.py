@@ -7,6 +7,8 @@ from app.routes.loyalty import router as loyalty_router
 from app.routes.messaging import router as messaging_router
 from app.routes.admin import router as admin_router
 from app.routes.user import router as user_router
+from app.routes.referral import router as referral_router
+from app.routes.coupon import router as coupon_router
 from app.config import config
 import logging
 import uvicorn
@@ -46,6 +48,9 @@ app.include_router(loyalty_router, tags=["User"])
 app.include_router(messaging_router, tags=["User"])
 app.include_router(user_router, tags=["User"])
 app.include_router(admin_router, tags=["Admin"])
+app.include_router(referral_router, tags=["User"])
+app.include_router(coupon_router, tags=["User"])
+
 
 # Health check
 @app.get("/health", tags=["Public"])
